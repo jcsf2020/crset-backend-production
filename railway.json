@@ -2,5 +2,5 @@
   "build": {
     "builder": "NIXPACKS"
   },
-  "start": "sh -lc 'rm -f /app/.env /app/src/.env 2>/dev/null || true; export ENVIRONMENT=production; exec uvicorn main:app --app-dir backend/src --host 0.0.0.0 --port $PORT'"
+  "start": "sh -lc 'rm -f /app/.env /app/src/.env /app/backend/.env /app/backend/src/.env 2>/dev/null || true; export ENVIRONMENT=production; exec uvicorn main:app --app-dir backend/src --host 0.0.0.0 --port $PORT'"
 }
