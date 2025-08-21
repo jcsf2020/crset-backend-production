@@ -1,56 +1,53 @@
-import os, time, json
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import jwt, bcrypt
+import os, logging
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, EmailStr
+from starlette.middleware.cors import CORSMiddleware
+from emailer import send_email
 
-BOOT = time.time()
+logging.basicConfig(level=logging.INFO)
+
+ENV = os.getenv("ENVIRONMENT", "development")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", FRONTEND_URL).split(",") if o.strip()]
+
 app = FastAPI()
 
-CORS = os.getenv("CORS_ORIGINS","*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in CORS],
+    allow_origins=CORS_ORIGINS or ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-JWT_SECRET = os.getenv("JWT_SECRET","dev")
-ADMIN_USER="admin"
-# hash de 'admin123' (bcrypt cost 12) — igual ao seed
-ADMIN_HASH=b"$2b$12$0w8Uppv4W49q7QfYw3Z6KOf0Qb2i7sP0rA7mN1QmXy1q2ZgF.7aGK"
-
 class ContactIn(BaseModel):
-    name:str
-    email:str
-    message:str
+    name: str
+    email: EmailStr
+    message: str
 
 class ChatIn(BaseModel):
-    message:str
-
-class LoginIn(BaseModel):
-    username:str
-    password:str
+    message: str
 
 @app.get("/health")
 def health():
-    return {"env":"production","status":"ok","uptime_s": round(time.time()-BOOT,2)}
-
-@app.post("/api/contact")
-def contact(payload: ContactIn):
-    # Aqui podes inserir em DB e enviar via Resend depois (placeholder)
-    return {"ok":True,"echo":payload.model_dump()}
+    return {"env": ENV, "status": "ok"}
 
 @app.post("/api/chat")
-def chat(payload: ChatIn):
-    # Placeholder IA — responde echo; depois liga OpenAI
-    return {"reply":"pong","echo":payload.model_dump()}
+def chat(body: ChatIn):
+    return {"reply":"pong","echo":{"message":body.message}}
 
-@app.post("/api/admin/login")
-def login(payload: LoginIn):
-    if payload.username != ADMIN_USER or not bcrypt.checkpw(payload.password.encode(), ADMIN_HASH):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = jwt.encode({"sub":"admin"}, JWT_SECRET, algorithm="HS256")
-    return {"token": token}
+@app.post("/api/contact")
+async def contact(body: ContactIn):
+    html = f"""
+    <h2>Novo Lead (CRSET)</h2>
+    <p><b>Nome:</b> {body.name}</p>
+    <p><b>Email:</b> {body.email}</p>
+    <p><b>Mensagem:</b><br/>{body.message}</p>
+    """
+    try:
+        resp = await send_email(subject=f"Novo Lead: {body.name}", html=html)
+    except Exception as e:
+        logging.exception("Email send failed")
+        raise HTTPException(status_code=502, detail="Email send failed")
 
+    return {"ok": True, "sent": bool(resp), "echo": body.model_dump()}
