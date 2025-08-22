@@ -5,6 +5,13 @@ from starlette.middleware.cors import CORSMiddleware
 from emailer import send_email
 from db import SessionLocal, Lead, init_db
 from antispam import check_rate_limit, verify_captcha
+
+# --- HARD CAPTCHA BYPASS (temp) ---
+async def __crset_nocaptcha(*args, **kwargs):
+    return True
+verify_captcha = __crset_nocaptcha
+# ----------------------------------
+
 from ai import score_lead
 from notion_integration import create_lead_in_notion
 
