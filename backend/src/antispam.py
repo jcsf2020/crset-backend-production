@@ -18,7 +18,7 @@ def check_rate_limit(key: str):
     return True, 0
 
 # Kill-switch: por padrão DESLIGADO
-CAPTCHA_ENABLED = os.getenv('CAPTCHA_ENABLED', '0').lower() not in ('0','false','no','off')
+CAPTCHA_ENABLED = False
 
 HCAPTCHA_SECRET = os.getenv('HCAPTCHA_SECRET')
 RECAPTCHA_SECRET = os.getenv('RECAPTCHA_SECRET')
