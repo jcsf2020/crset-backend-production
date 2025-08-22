@@ -117,16 +117,3 @@ async def contact(body: ContactIn, request: Request):
 
     return {"ok": True, "sent": sent, "lead_id": lead_id, "ai": ai_result or None, "echo": body.model_dump()}
 
-# ===================== TEMP MAILTEST =====================
-from fastapi import HTTPException as _HTTPException
-
-@app.post("/__mailtest")
-async def __mailtest():
-    TO = os.getenv("CONTACT_TO_EMAIL","crsetsolutions@gmail.com")
-    try:
-        logger.info("MAILTEST: EMAIL_SENT to=%s", TO)
-        return {"ok": True, "to": TO}
-    except Exception as e:
-        logger.exception("MAILTEST: failed: %s", e)
-        raise _HTTPException(status_code=500, detail=f"mail_error: {e}")
-# =========================================================
