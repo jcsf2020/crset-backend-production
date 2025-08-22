@@ -48,7 +48,8 @@ def chat(body: ChatIn):
 @app.post("/api/contact")
 async def contact(body: ContactIn, request: Request):
     # 0) Rate limit por IP e por email
-    client_ip = (request.client.host if request.client else "unknown") or "unknown"
+    fwd = request.headers.get("x-forwarded-for", "") or ""
+    client_ip = ((fwd.split(",")[0].strip() if fwd else request.headers.get("cf-connecting-ip")) or (request.client.host if request.client else "unknown") or "unknown")
     ok, retry = check_rate_limit(f"ip:{client_ip}")
     if not ok:
         raise HTTPException(
