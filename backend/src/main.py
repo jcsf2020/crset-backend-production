@@ -4,14 +4,7 @@ from pydantic import BaseModel, EmailStr
 from starlette.middleware.cors import CORSMiddleware
 from emailer import send_email
 from db import SessionLocal, Lead, init_db
-from antispam import check_rate_limit, verify_captcha
-
-# --- HARD CAPTCHA BYPASS (temp) ---
-async def __crset_nocaptcha(*args, **kwargs):
-    return True
-verify_captcha = __crset_nocaptcha
-# ----------------------------------
-
+from antispam import check_rate_limit  # <- sem verify_captcha
 from ai import score_lead
 from notion_integration import create_lead_in_notion
 
@@ -35,7 +28,7 @@ class ContactIn(BaseModel):
     name: str
     email: EmailStr
     message: str
-    captcha: str | None = None  # opcional
+    captcha: str | None = None  # ignorado (bypass)
 
 class ChatIn(BaseModel):
     message: str
@@ -44,6 +37,7 @@ class ChatIn(BaseModel):
 def _startup():
     init_db()
     logger.info("Startup OK (env=%s, cors=%s)", ENV, CORS_ORIGINS)
+    logger.info("CAPTCHA BYPASS: ativo (nenhuma validação de captcha será feita)")
 
 @app.get("/health")
 def health():
@@ -71,14 +65,7 @@ async def contact(body: ContactIn, request: Request):
     if not ok:
         raise HTTPException(status_code=429, detail=f"Too many requests (email). Try again in {retry}s", headers={"Retry-After": str(retry)})
 
-    # 0.2) CAPTCHA (runtime kill-switch + precisa de secret válido)
-    cap_on = os.getenv("CAPTCHA_ENABLED", "0").lower() not in ("0","false","no","off")
-    has_secret = bool(os.getenv("HCAPTCHA_SECRET") or os.getenv("RECAPTCHA_SECRET"))
-    if cap_on and has_secret:
-        if not await verify_captcha(body.captcha or "", client_ip):
-            raise HTTPException(status_code=400, detail="Invalid captcha")
-    else:
-        logger.info("CAPTCHA bypass: cap_on=%s, has_secret=%s", cap_on, has_secret)
+    # >>> NADA DE CAPTCHA A PARTIR DAQUI <<<
 
     # 1) Grava lead
     db = SessionLocal()
@@ -92,21 +79,21 @@ async def contact(body: ContactIn, request: Request):
     finally:
         db.close()
 
-    # 2) IA: scoring (best-effort)
+    # 2) IA (best-effort)
     ai_result = await score_lead(body.name, str(body.email), body.message)
     ai_score = (ai_result or {}).get("score")
     ai_reason = (ai_result or {}).get("reason") or ""
 
-    # 2.1) Notion (best-effort)
+    # 3) Notion (best-effort)
     try:
         _ = await create_lead_in_notion(
             body.name, str(body.email), body.message,
-            score=ai_score, ip=client_ip, lead_id=lead_id
+            score=ai_score, ip=client_ip, lead_id=lead_id,
         )
     except Exception as e:
         logger.warning("Notion best-effort failed: %s", e)
 
-    # 3) Email
+    # 4) Email
     parts = [
         "<h2>Novo Lead (CRSET)</h2>",
         f"<p><b>Nome:</b> {body.name}</p>",
