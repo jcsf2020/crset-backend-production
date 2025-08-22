@@ -1,9 +1,10 @@
 import os, logging
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from starlette.middleware.cors import CORSMiddleware
 from emailer import send_email
 from db import SessionLocal, Lead, init_db
+from antispam import check_rate_limit, verify_captcha
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("crset")
@@ -26,6 +27,7 @@ class ContactIn(BaseModel):
     name: str
     email: EmailStr
     message: str
+    captcha: str | None = None  # opcional (ignorado se não houver SECRET)
 
 class ChatIn(BaseModel):
     message: str
@@ -41,10 +43,31 @@ def health():
 
 @app.post("/api/chat")
 def chat(body: ChatIn):
-    return {"reply":"pong","echo":{"message":body.message}}
+    return {"reply": "pong", "echo": {"message": body.message}}
 
 @app.post("/api/contact")
-async def contact(body: ContactIn):
+async def contact(body: ContactIn, request: Request):
+    # 0) Rate limit por IP e por email
+    client_ip = (request.client.host if request.client else "unknown") or "unknown"
+    ok, retry = check_rate_limit(f"ip:{client_ip}")
+    if not ok:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many requests (IP). Try again in {retry}s",
+            headers={"Retry-After": str(retry)},
+        )
+    ok, retry = check_rate_limit(f"email:{str(body.email).lower()}")
+    if not ok:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many requests (email). Try again in {retry}s",
+            headers={"Retry-After": str(retry)},
+        )
+
+    # 0.1) Verificação de CAPTCHA (se estiver configurado)
+    if not await verify_captcha(body.captcha or "", client_ip):
+        raise HTTPException(status_code=400, detail="Invalid captcha")
+
     # 1) Grava lead
     db = SessionLocal()
     lead_id = None
@@ -69,7 +92,6 @@ async def contact(body: ContactIn):
     try:
         resp = await send_email(subject=f"Novo Lead: {body.name}", html=html)
         sent = bool(resp)
-        # prints aparecem nos logs do Railway mesmo se o logger não propagar
         print(f"EMAIL_SENT resp={resp}")
     except Exception as e:
         print(f"EMAIL_SEND_FAILED error={e}")
