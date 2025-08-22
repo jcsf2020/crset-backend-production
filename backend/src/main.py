@@ -45,7 +45,7 @@ def health():
 
 @app.post("/api/chat")
 def chat(body: ChatIn):
-    return {"reply": "pong", "echo": {{"message": body.message}}}
+    return {"reply": "pong", "echo": {"message": body.message}}
 
 @app.post("/api/contact")
 async def contact(body: ContactIn, request: Request):
