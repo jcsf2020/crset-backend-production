@@ -64,12 +64,14 @@ async def contact(body: ContactIn, request: Request):
     if not ok:
         raise HTTPException(status_code=429, detail=f"Too many requests (email). Try again in {retry}s", headers={"Retry-After": str(retry)})
 
-    # 0.2) CAPTCHA (kill-switch em runtime: só valida se ON + existir secret válido)
-    cap_on = os.getenv("CAPTCHA_ENABLED", "0").lower() not in ("0", "false", "no", "off")
+    # 0.2) CAPTCHA (runtime kill-switch + precisa de secret válido)
+    cap_on = os.getenv("CAPTCHA_ENABLED", "0").lower() not in ("0","false","no","off")
     has_secret = bool(os.getenv("HCAPTCHA_SECRET") or os.getenv("RECAPTCHA_SECRET"))
     if cap_on and has_secret:
         if not await verify_captcha(body.captcha or "", client_ip):
             raise HTTPException(status_code=400, detail="Invalid captcha")
+    else:
+        logger.info("CAPTCHA bypass: cap_on=%s, has_secret=%s", cap_on, has_secret)
 
     # 1) Grava lead
     db = SessionLocal()
@@ -115,8 +117,8 @@ async def contact(body: ContactIn, request: Request):
     try:
         resp = await send_email(subject=f"Novo Lead: {body.name}", html=html)
         sent = bool(resp)
-        print(f"EMAIL_SENT resp={resp}")
+        logger.info("EMAIL_SENT resp=%s", resp)
     except Exception as e:
-        print(f"EMAIL_SEND_FAILED error={e}")
+        logger.error("EMAIL_SEND_FAILED error=%s", e)
 
     return {"ok": True, "sent": sent, "lead_id": lead_id, "ai": ai_result or None, "echo": body.model_dump()}
