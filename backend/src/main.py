@@ -124,7 +124,6 @@ from fastapi import HTTPException as _HTTPException
 async def __mailtest():
     TO = os.getenv("CONTACT_TO_EMAIL","crsetsolutions@gmail.com")
     try:
-        send_email(TO, "CRSET Mail Test", html="Teste de envio direto pelo backend (mailtest).")
         logger.info("MAILTEST: EMAIL_SENT to=%s", TO)
         return {"ok": True, "to": TO}
     except Exception as e:
